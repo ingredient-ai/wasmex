@@ -1,7 +1,7 @@
 defmodule Wasmex.MixProject do
   use Mix.Project
 
-  @version "0.15.1"
+  @version "0.15.2-ingredient.1"
 
   def project do
     [
@@ -61,10 +61,10 @@ defmodule Wasmex.MixProject do
         ],
       licenses: ["MIT"],
       links: %{
-        "GitHub" => "https://github.com/tessi/wasmex",
+        "GitHub" => "https://github.com/ingredient-ai/wasmex",
         "Docs" => "https://hexdocs.pm/wasmex"
       },
-      source_url: "https://github.com/tessi/wasmex"
+      source_url: "https://github.com/ingredient-ai/wasmex"
     ]
   end
 end

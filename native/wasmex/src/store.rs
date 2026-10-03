@@ -12,12 +12,9 @@ use std::{
 };
 use wasmtime::{Engine, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::{
-    p1::WasiP1Ctx, DirPerms, FilePerms, ResourceTable, WasiCtx, WasiCtxBuilder, WasiView,
+    filesystem::FsPerms, p1::WasiP1Ctx, ResourceTable, WasiCtx, WasiCtxBuilder, WasiView,
 };
-use wasmtime_wasi_http::{
-    p2::{WasiHttpCtxView, WasiHttpView},
-    WasiHttpCtx,
-};
+use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpCtxView, WasiHttpView};
 
 #[derive(Debug, NifStruct)]
 #[module = "Wasmex.Wasi.PreopenOptions"]
@@ -377,6 +374,25 @@ pub fn new_wasi(
     Ok(resource)
 }
 
+/// Cancels a store: its running WebAssembly traps at the next epoch tick, and so does
+/// every later call. Takes effect without waiting for the store's command queue, so it
+/// reaches a call already in progress. A caller (an imported function's view of the
+/// store) cannot be cancelled; cancel the store that owns it.
+#[rustler::nif(name = "store_cancel")]
+pub fn cancel(
+    store_or_caller_resource: ResourceArc<StoreOrCallerResource>,
+) -> Result<Atom, rustler::Error> {
+    match store_or_caller_resource.target()? {
+        StoreTarget::Executor(executor) => {
+            executor.cancel();
+            Ok(crate::atoms::ok())
+        }
+        StoreTarget::Caller(_session) => Err(rustler::Error::Term(Box::new(
+            "cannot cancel a caller; cancel the store that owns it",
+        ))),
+    }
+}
+
 #[rustler::nif(name = "store_or_caller_set_fuel")]
 pub fn set_fuel(
     store_or_caller_resource: ResourceArc<StoreOrCallerResource>,
@@ -470,7 +486,7 @@ fn preopen_directory(
     let path = &preopen.path;
     let guest_path = preopen.alias.as_ref().unwrap_or(path);
     builder
-        .preopened_dir(path, guest_path, DirPerms::all(), FilePerms::all())
+        .preopened_dir(path, guest_path, FsPerms::ReadWrite)
         .map_err(|err| Error::Term(Box::new(err.to_string())))?;
     Ok(())
 }

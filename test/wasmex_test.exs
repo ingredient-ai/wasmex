@@ -709,6 +709,34 @@ defmodule WasmexTest do
       assert {:ok, [42]} = Wasmex.call_function(pid, :identity, [42], 1_000)
     end
 
+    test "cancelling the store interrupts a call already running, from another process" do
+      wat = """
+      (module
+        (func (export "run_forever")
+          (loop $forever
+            br $forever
+          )
+        )
+        (func (export "identity") (param i32) (result i32)
+          local.get 0
+        )
+      )
+      """
+
+      {:ok, pid} = Wasmex.start_link(%{bytes: wat})
+      {:ok, store} = Wasmex.store(pid)
+      call = Task.async(fn -> Wasmex.call_function(pid, :run_forever, [], :infinity) end)
+
+      Process.sleep(50)
+      assert :ok = Wasmex.StoreOrCaller.cancel(store)
+
+      assert {:error, reason} = Task.await(call, 1_000)
+      assert reason =~ "interrupt"
+
+      # Cancellation is permanent: later calls trap instead of running.
+      assert {:error, _reason} = Wasmex.call_function(pid, :identity, [42], 1_000)
+    end
+
     test "a callback completing after timeout does not terminate the server" do
       wat = """
       (module

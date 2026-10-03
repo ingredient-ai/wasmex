@@ -223,6 +223,9 @@ fn link_imported_function(
                     result.map_err(|_| {
                         WasmtimeError::msg("could not send callback invocation to Elixir")
                     })?;
+                    // Only the message sent to Elixir keeps the result sender alive, so the
+                    // channel closes if that process dies before answering.
+                    drop(callback_token);
 
                     let result = loop {
                         tokio::select! {

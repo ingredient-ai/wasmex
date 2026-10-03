@@ -97,6 +97,27 @@ defmodule Wasmex.StoreOrCaller do
       get_fuel -> {:ok, get_fuel}
     end
   end
+
+  @doc ~S"""
+  Cancels a store. Its running WebAssembly traps at the next epoch tick (about 10 ms),
+  and so does every later call; the store cannot be resumed. Unlike a call `timeout`,
+  this works from any process and reaches a call that is already running, so an owner
+  can stop a guest whose caller has died.
+
+  A caller (the store as seen from inside an imported function) cannot be cancelled;
+  cancel the store that owns it.
+
+  ## Examples
+
+      iex> {:ok, engine} = Wasmex.Engine.new(%Wasmex.EngineConfig{})
+      iex> {:ok, store} = Wasmex.Store.new(nil, engine)
+      iex> Wasmex.StoreOrCaller.cancel(store)
+      :ok
+  """
+  @spec cancel(__MODULE__.t()) :: :ok | {:error, binary()}
+  def cancel(%__MODULE__{resource: resource}) do
+    Wasmex.Native.store_cancel(resource)
+  end
 end
 
 defimpl Inspect, for: Wasmex.StoreOrCaller do

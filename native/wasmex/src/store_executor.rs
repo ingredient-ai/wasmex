@@ -33,6 +33,7 @@ pub enum SubmitError {
 pub struct StoreExecutor<T: 'static> {
     sender: mpsc::Sender<StoreCommand<T>>,
     engine: Engine,
+    cancelled: Arc<AtomicBool>,
 }
 
 impl<T: 'static> Clone for StoreExecutor<T> {
@@ -40,21 +41,26 @@ impl<T: 'static> Clone for StoreExecutor<T> {
         Self {
             sender: self.sender.clone(),
             engine: self.engine.clone(),
+            cancelled: self.cancelled.clone(),
         }
     }
 }
 
 impl<T: InterruptState + Send + 'static> StoreExecutor<T> {
     pub(crate) fn new_async(mut store: Store<T>, epoch_ticker: crate::engine::EpochTicker) -> Self {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled_for_callback = cancelled.clone();
         store.set_epoch_deadline(1);
-        store.epoch_deadline_callback(|store| {
-            if store.data().interrupt_requested().load(Ordering::Acquire) {
+        store.epoch_deadline_callback(move |store| {
+            if cancelled_for_callback.load(Ordering::Acquire)
+                || store.data().interrupt_requested().load(Ordering::Acquire)
+            {
                 Ok(UpdateDeadline::Interrupt)
             } else {
                 Ok(UpdateDeadline::Yield(1))
             }
         });
-        Self::with_capacity(store, DEFAULT_QUEUE_CAPACITY, Some(epoch_ticker))
+        Self::with_capacity(store, DEFAULT_QUEUE_CAPACITY, Some(epoch_ticker), cancelled)
     }
 }
 
@@ -63,6 +69,7 @@ impl<T: Send + 'static> StoreExecutor<T> {
         store: Store<T>,
         capacity: usize,
         epoch_ticker: Option<crate::engine::EpochTicker>,
+        cancelled: Arc<AtomicBool>,
     ) -> Self {
         let engine = store.engine().clone();
         let (sender, mut receiver) = mpsc::channel::<StoreCommand<T>>(capacity);
@@ -75,7 +82,19 @@ impl<T: Send + 'static> StoreExecutor<T> {
             }
         });
 
-        Self { sender, engine }
+        Self {
+            sender,
+            engine,
+            cancelled,
+        }
+    }
+
+    /// Interrupts the store's running WebAssembly at the next epoch tick and every call
+    /// after it. Unlike a call deadline, the flag is never cleared: a cancelled store
+    /// only traps. It is set directly, not through the command queue, so it reaches a
+    /// call that is already running.
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
     }
 
     pub fn engine(&self) -> &Engine {
@@ -138,8 +157,12 @@ mod tests {
 
     #[test]
     fn executes_commands_in_submission_order() {
-        let executor =
-            StoreExecutor::with_capacity(Store::new(&Engine::default(), 0usize), 2, None);
+        let executor = StoreExecutor::with_capacity(
+            Store::new(&Engine::default(), 0usize),
+            2,
+            None,
+            Arc::default(),
+        );
         let observed = Arc::new(AtomicUsize::new(0));
 
         for expected in 0..2 {
@@ -161,7 +184,12 @@ mod tests {
 
     #[test]
     fn reports_backpressure() {
-        let executor = StoreExecutor::with_capacity(Store::new(&Engine::default(), ()), 1, None);
+        let executor = StoreExecutor::with_capacity(
+            Store::new(&Engine::default(), ()),
+            1,
+            None,
+            Arc::default(),
+        );
         let (started_tx, started_rx) = std::sync::mpsc::channel();
         let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
         let (finish_queued_tx, finish_queued_rx) = tokio::sync::oneshot::channel();

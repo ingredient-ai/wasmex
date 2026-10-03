@@ -107,6 +107,7 @@ defmodule Wasmex.Native do
 
   def store_or_caller_get_fuel(_store_or_caller_resource, _from), do: error()
   def store_or_caller_set_fuel(_store_or_caller_resource, _fuel, _from), do: error()
+  def store_cancel(_store_or_caller_resource), do: error()
 
   def component_new(_store, _component_bytes), do: error()
   def component_instance_new(_store, _component, _imports, _from), do: error()
