@@ -1,0 +1,15 @@
+%{
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-aarch64-apple-darwin.so.tar.gz" => "sha256:db039f03031580ee8ef2a2e4f62051839801e6bb594ccb3163b4c6cf67ba0e39",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-aarch64-apple-ios-sim.so.tar.gz" => "sha256:4e258689326d117098479bd6e8b0727e863608e6d965627e7c2e44cc96dc696a",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-aarch64-apple-ios.so.tar.gz" => "sha256:4dac9c79de623b94d7dada1e7d0e7729fc9d3a1079329b04a6248274540cb8f8",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-aarch64-unknown-linux-gnu.so.tar.gz" => "sha256:bde6ef2e52cabcb71cae5c3251b5ba33889ff615a94f13278ea90c79b6e6c71f",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-aarch64-unknown-linux-musl.so.tar.gz" => "sha256:2ce7f4758ed1ed6873f7ebae0c12d7d9a5158b6b7e3617c5e93fe45a912c20d9",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-riscv64gc-unknown-linux-gnu.so.tar.gz" => "sha256:76e0bf0fe3d364eb9e2a203ce3a28122a2b95c93dd9600c2355b5f444f145f83",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-x86_64-apple-darwin.so.tar.gz" => "sha256:e1206ad479c21c55d17de719a36c21a858e936b7ebc0ebec36b3863abed8aa09",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-x86_64-apple-ios.so.tar.gz" => "sha256:6b8873a5d5b7bcc7a1880a0c068a1d6d5e918cde7a124dca9c701ec7601b2931",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-x86_64-unknown-freebsd.so.tar.gz" => "sha256:4cb6dae57a6329fb120560c34db160ff4c5c19661cb2b8264fb2f6901bad9855",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-x86_64-unknown-linux-gnu.so.tar.gz" => "sha256:6d7f00d9bc546fc41ec476b17d5bc9ea13dca8bb4f4521b8cf8bfa80a448df38",
+  "libwasmex-v0.15.2-ingredient.1-nif-2.15-x86_64-unknown-linux-musl.so.tar.gz" => "sha256:05dd21385586b278c826e8c937348a61ab128e20fda60ad79bf4cecc0daabc39",
+  "wasmex-v0.15.2-ingredient.1-nif-2.15-x86_64-pc-windows-gnu.dll.tar.gz" => "sha256:47fefa16f3496c1481ec2304274d7575e835edb55d53b9085f462ae628a582cd",
+  "wasmex-v0.15.2-ingredient.1-nif-2.15-x86_64-pc-windows-msvc.dll.tar.gz" => "sha256:d6f66a2a3e0ebb8149108802a636c3851976ff9a50c97c92e2b006d88c149526",
+}
