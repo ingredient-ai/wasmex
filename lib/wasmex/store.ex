@@ -83,6 +83,24 @@ defmodule Wasmex.Store do
       resource -> {:ok, StoreOrCaller.__wrap_resource__(resource)}
     end
   end
+
+  @doc ~S"""
+  Returns how many native Wasm stores exist that have not been dropped yet, across the
+  whole VM. It counts both `Wasmex.Store` and `Wasmex.Components.Store` stores.
+
+  A store is dropped asynchronously: once its resource is garbage collected, the store's
+  executor first finishes the operations already queued and only then drops it. So the
+  count can stay above zero for a while after the last reference is gone; poll it rather
+  than reading it once when checking that stores are released.
+
+  ## Examples
+
+      iex> count = Wasmex.Store.live_count()
+      iex> is_integer(count) and count >= 0
+      true
+  """
+  @spec live_count() :: non_neg_integer()
+  def live_count, do: Wasmex.Native.store_live_count()
 end
 
 defimpl Inspect, for: Wasmex.Store do

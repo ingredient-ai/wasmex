@@ -393,6 +393,12 @@ pub fn cancel(
     }
 }
 
+/// Native Stores (core and component) not yet dropped by their executor task.
+#[rustler::nif(name = "store_live_count")]
+pub fn live_count() -> usize {
+    crate::store_executor::live_store_count()
+}
+
 #[rustler::nif(name = "store_or_caller_set_fuel")]
 pub fn set_fuel(
     store_or_caller_resource: ResourceArc<StoreOrCallerResource>,

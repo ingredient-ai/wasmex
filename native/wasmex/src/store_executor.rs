@@ -2,7 +2,7 @@ use std::{
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -11,6 +11,33 @@ use tokio::sync::mpsc;
 use wasmtime::{Engine, Store, UpdateDeadline};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 1024;
+
+static LIVE_STORES: AtomicUsize = AtomicUsize::new(0);
+
+/// Number of native Stores owned by an executor task that have not been dropped yet.
+/// A Store outlives its last `StoreExecutor` handle: the executor task finishes the
+/// commands already queued and drops the Store afterwards, so this lags handle drops.
+pub fn live_store_count() -> usize {
+    LIVE_STORES.load(Ordering::Acquire)
+}
+
+/// Counts one Store from executor creation until the executor task has dropped it.
+/// Decrementing in `Drop` keeps the count honest when a command panics, because the
+/// task unwinds its Store before this guard (declared earlier, dropped later).
+struct LiveStore(&'static AtomicUsize);
+
+impl LiveStore {
+    fn track(counter: &'static AtomicUsize) -> Self {
+        counter.fetch_add(1, Ordering::AcqRel);
+        Self(counter)
+    }
+}
+
+impl Drop for LiveStore {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
 
 type StoreFuture<T> = Pin<Box<dyn Future<Output = Store<T>> + Send + 'static>>;
 type StoreCommand<T> = Box<dyn FnOnce(Store<T>) -> StoreFuture<T> + Send + 'static>;
@@ -60,7 +87,13 @@ impl<T: InterruptState + Send + 'static> StoreExecutor<T> {
                 Ok(UpdateDeadline::Yield(1))
             }
         });
-        Self::with_capacity(store, DEFAULT_QUEUE_CAPACITY, Some(epoch_ticker), cancelled)
+        Self::with_capacity(
+            store,
+            DEFAULT_QUEUE_CAPACITY,
+            Some(epoch_ticker),
+            cancelled,
+            &LIVE_STORES,
+        )
     }
 }
 
@@ -70,16 +103,21 @@ impl<T: Send + 'static> StoreExecutor<T> {
         capacity: usize,
         epoch_ticker: Option<crate::engine::EpochTicker>,
         cancelled: Arc<AtomicBool>,
+        live_stores: &'static AtomicUsize,
     ) -> Self {
         let engine = store.engine().clone();
         let (sender, mut receiver) = mpsc::channel::<StoreCommand<T>>(capacity);
+        let live_store = LiveStore::track(live_stores);
 
         crate::engine::TOKIO_RUNTIME.spawn(async move {
+            let live_store = live_store;
             let _epoch_ticker = epoch_ticker;
             let mut store = store;
             while let Some(command) = receiver.recv().await {
                 store = command(store).await;
             }
+            drop(store);
+            drop(live_store);
         });
 
         Self {
@@ -146,14 +184,68 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
+    use std::{
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        },
+        time::{Duration, Instant},
     };
 
     use wasmtime::{Engine, Store};
 
-    use super::{StoreExecutor, SubmitError};
+    use super::{StoreExecutor, SubmitError, LIVE_STORES};
+
+    // Private to the test so executors from parallel tests cannot move it.
+    static COUNTED_STORES: AtomicUsize = AtomicUsize::new(0);
+
+    /// Store data that reports the live count at the moment the Store drops it.
+    struct ReportsCountOnDrop(std::sync::mpsc::Sender<usize>);
+
+    impl Drop for ReportsCountOnDrop {
+        fn drop(&mut self) {
+            let _ = self.0.send(COUNTED_STORES.load(Ordering::SeqCst));
+        }
+    }
+
+    #[test]
+    fn counts_the_store_until_the_executor_task_drops_it() {
+        let (dropped_tx, dropped_rx) = std::sync::mpsc::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel::<()>();
+        let executor = StoreExecutor::with_capacity(
+            Store::new(&Engine::default(), ReportsCountOnDrop(dropped_tx)),
+            1,
+            None,
+            Arc::default(),
+            &COUNTED_STORES,
+        );
+        assert_eq!(COUNTED_STORES.load(Ordering::SeqCst), 1);
+
+        executor
+            .submit(move |store| async move {
+                let _ = finish_rx.await;
+                store
+            })
+            .unwrap();
+        drop(executor);
+
+        // The running command still owns the Store, so dropping the last handle is not enough.
+        assert!(dropped_rx.try_recv().is_err());
+        assert_eq!(COUNTED_STORES.load(Ordering::SeqCst), 1);
+
+        finish_tx.send(()).unwrap();
+        let count_while_dropping = dropped_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            count_while_dropping, 1,
+            "decremented before the Store was dropped"
+        );
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while COUNTED_STORES.load(Ordering::SeqCst) != 0 {
+            assert!(Instant::now() < deadline, "live count never returned to 0");
+            std::thread::yield_now();
+        }
+    }
 
     #[test]
     fn executes_commands_in_submission_order() {
@@ -162,6 +254,7 @@ mod tests {
             2,
             None,
             Arc::default(),
+            &LIVE_STORES,
         );
         let observed = Arc::new(AtomicUsize::new(0));
 
@@ -189,6 +282,7 @@ mod tests {
             1,
             None,
             Arc::default(),
+            &LIVE_STORES,
         );
         let (started_tx, started_rx) = std::sync::mpsc::channel();
         let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();

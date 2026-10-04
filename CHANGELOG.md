@@ -14,6 +14,12 @@ Types of changes
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## [0.15.2-ingredient.2 - 2026-10-04]
+
+### Added
+
+- Added `Wasmex.Store.live_count/0`, the number of native core and component stores not yet dropped, so callers can check that stores are released.
+
 ## [0.15.1 - 2026-08-07]
 
 ### Changed
