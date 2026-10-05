@@ -14,6 +14,12 @@ Types of changes
 - `Fixed` for any bug fixes.
 - `Security` in case of vulnerabilities.
 
+## [0.15.2-ingredient.3 - 2026-10-05]
+
+### Fixed
+
+- The epoch ticker runs on a dedicated thread instead of the stores' executor runtime. Calls that were computing on every executor thread kept the ticker from running, so none of them reached its deadline or saw its store's cancellation, and new stores could not start.
+
 ## [0.15.2-ingredient.2 - 2026-10-04]
 
 ### Added

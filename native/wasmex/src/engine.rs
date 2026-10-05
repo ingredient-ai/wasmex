@@ -49,24 +49,25 @@ pub(crate) struct EpochTicker {
 }
 
 impl EpochTicker {
-    fn new(engine: Engine) -> Self {
+    // A dedicated thread, not a task on the stores' executor runtime: a call that is
+    // computing gives its executor thread back only at an epoch tick, so once such calls
+    // occupy every executor thread a ticker task would never run again, and no call
+    // would reach its deadline or see its store's cancellation.
+    fn new(engine: Engine) -> std::io::Result<Self> {
         let state = Arc::new(EpochTickerState { engine });
         let weak_state: Weak<EpochTickerState> = Arc::downgrade(&state);
 
-        TOKIO_RUNTIME.spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(10));
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-            loop {
-                interval.tick().await;
+        std::thread::Builder::new()
+            .name("wasmex-epoch".to_string())
+            .spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(10));
                 let Some(state) = weak_state.upgrade() else {
                     break;
                 };
                 state.engine.increment_epoch();
-            }
-        });
+            })?;
 
-        Self { _state: state }
+        Ok(Self { _state: state })
     }
 }
 
@@ -76,7 +77,11 @@ pub fn new(
 ) -> Result<ResourceArc<EngineResource>, rustler::Error> {
     let config = engine_config(engine_config_ex);
     let engine = Engine::new(&config).map_err(|err| Error::Term(Box::new(err.to_string())))?;
-    let epoch_ticker = EpochTicker::new(engine.clone());
+    let epoch_ticker = EpochTicker::new(engine.clone()).map_err(|err| {
+        Error::Term(Box::new(format!(
+            "Could not start the engine's epoch ticker: {err}"
+        )))
+    })?;
     let resource = ResourceArc::new(EngineResource {
         inner: Mutex::new(engine),
         epoch_ticker: Mutex::new(epoch_ticker),

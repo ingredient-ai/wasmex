@@ -737,6 +737,43 @@ defmodule WasmexTest do
       assert {:error, _reason} = Wasmex.call_function(pid, :identity, [42], 1_000)
     end
 
+    test "cancelling interrupts running calls even when they occupy every executor thread" do
+      wat = """
+      (module
+        (func (export "run_forever")
+          (loop $forever
+            br $forever
+          )
+        )
+      )
+      """
+
+      # The executor runs one thread per available CPU; one more busy call than that
+      # leaves no thread free for anything else that runs on it. The instances start
+      # before any call does, because starting one also needs an executor thread.
+      busy_calls = :erlang.system_info(:logical_processors_available) + 1
+
+      instances =
+        for _ <- 1..busy_calls do
+          {:ok, pid} = Wasmex.start_link(%{bytes: wat})
+          {:ok, store} = Wasmex.store(pid)
+          {pid, store}
+        end
+
+      calls =
+        for {pid, store} <- instances do
+          {store, Task.async(fn -> Wasmex.call_function(pid, :run_forever, [], :infinity) end)}
+        end
+
+      Process.sleep(100)
+      for {store, _call} <- calls, do: assert(:ok = Wasmex.StoreOrCaller.cancel(store))
+
+      for {_store, call} <- calls do
+        assert {:error, reason} = Task.await(call, 2_000)
+        assert reason =~ "interrupt"
+      end
+    end
+
     test "a callback completing after timeout does not terminate the server" do
       wat = """
       (module
